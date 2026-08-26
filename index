@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard TPS3R Kabupaten Bandung</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
+
+  <style>
+    :root{ --main:#1F6366; --main-dark:#164b4d; --bg:#f4f8f8; --text:#173b3d }
+    *{box-sizing:border-box}
+    body{ margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text) }
+    .app{ min-height:100vh; display:flex; flex-direction:column }
+    .header{ background:linear-gradient(135deg,var(--main),var(--main-dark)); color:white; padding:18px 24px; box-shadow:0 4px 18px rgba(0,0,0,.18) }
+    .header h1{ margin:0; font-size:22px; font-weight:800 }
+    .header p{ margin:6px 0 0; opacity:.9; font-size:13px }
+    .content{ padding:16px; display:grid; grid-template-columns:280px 1fr; gap:16px; flex:1 }
+    .panel{ display:flex; flex-direction:column; gap:12px }
+    .card{ background:white; border-radius:14px; padding:14px; box-shadow:0 6px 18px rgba(31,99,102,.10); border:1px solid rgba(31,99,102,.10) }
+    .summary-card{ background:linear-gradient(135deg,#fff,#eef8f7); border-left:6px solid var(--main) }
+    .label{ font-size:13px; font-weight:700; color:#466; margin-bottom:6px }
+    .big-number{ font-size:30px; font-weight:800; color:var(--main); line-height:1.2 }
+    .desc{ margin-top:6px; font-size:12px; color:#5c6f70; line-height:1.4 }
+    .btn{ width:100%; border:none; border-radius:10px; padding:10px 12px; background:var(--main); color:white; font-size:13px; font-weight:700; cursor:pointer; box-shadow:0 4px 12px rgba(31,99,102,.20) }
+    .btn:hover{ background:var(--main-dark) }
+    .input,.select{ width:100%; padding:9px 10px; border-radius:10px; border:1px solid #c9dcdc; outline:none; font-size:12px; background:white }
+    .input:focus,.select:focus{ border-color:var(--main); box-shadow:0 0 0 2px rgba(31,99,102,.12) }
+    .status{ font-size:12px; color:#667; line-height:1.4 }
+    .map-wrap{ background:white; padding:10px; border-radius:18px; box-shadow:0 8px 28px rgba(31,99,102,.13); min-height:680px }
+    #map{ width:100%; height:calc(100vh - 140px); min-height:650px; border-radius:14px; overflow:hidden }
+    .popup-table{ border-collapse:collapse; width:100%; font-size:12px }
+    .popup-table td{ border-bottom:1px solid #e5eeee; padding:6px; vertical-align:top }
+    .popup-table td:first-child{ font-weight:bold; color:var(--main); width:38% }
+    .leaflet-popup-content{ max-height:380px; overflow-y:auto }
+    .empty{ padding:12px; background:#fff7e6; color:#6b4b00; border-radius:12px; font-size:12px; line-height:1.4 }
+    .invalid-item{ margin-bottom:6px; padding:6px; background:#fff3f3; border-left:4px solid #c0392b; border-radius:6px; font-size:11px; line-height:1.4 }
+    @media(max-width:900px){ .content{grid-template-columns:1fr} #map{height:70vh} }
+  </style>
+</head>
+
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Dashboard Pemetaan TPS3R</h1>
+    <p>Sebaran TPS3R DI Seluruh Kabupaten Bandung</p>
+  </div>
+  
+  <div class="content">
+    <div class="panel">
+      <div class="card summary-card">
+        <div class="label">Jumlah TPS3R Ditampilkan</div>
+        <div class="big-number" id="totalTps3r">0</div>
+        <div class="desc" id="summaryDesc">Menunggu data...</div>
+      </div>
+
+      <div class="card summary-card">
+        <div class="label">Kapasitas TPS3R</div>
+        <div class="big-number" id="totalKapasitas">0</div>
+        <div class="desc" id="kapasitasDesc">Total kapasitas dalam ton/hari.</div>
+      </div>
+
+      <div class="card summary-card">
+        <div class="label">Jumlah KK Terlayani</div>
+        <div class="big-number" id="totalKkTerlayani">0</div>
+        <div class="desc" id="kkDesc">Total kepala keluarga terlayani.</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Filter Status</div>
+        <select id="statusFilter" class="select" onchange="applyFilters()">
+          <option value="">Semua Status</option>
+        </select>
+        <div class="desc" id="statusColumnInfo">Pilihan status otomatis dibaca dari spreadsheet.</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Filter Kecamatan</div>
+        <select id="kecFilter" class="select" onchange="applyFilters()">
+          <option value="">Semua Kecamatan</option>
+        </select>
+      </div>
+
+      <div class="card">
+        <div class="label">Pencarian Data</div>
+        <input type="text" id="searchInput" class="input" placeholder="Cari nama TPS3R, kecamatan, desa, alamat..." oninput="applyFilters()">
+        <div class="desc">Pencarian akan menyaring titik pada peta.</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Akses Database</div>
+        <button class="btn" onclick="window.open('https://docs.google.com/spreadsheets/d/1-ClLbZah2E0lVV_KVdPl-VnaLNAtWDmoyWVfc-dwsQk/edit?gid=376169248','_blank')">Buka Spreadsheet</button>
+      </div>
+
+      <div class="card">
+        <div class="label">Download File Peta</div>
+        <button class="btn" onclick="downloadKmzFile()">Download KMZ</button>
+        <div class="desc">File KMZ dapat dibuka di Google Earth.</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Data Koordinat Bermasalah</div>
+        <div id="invalidList" style="max-height:230px;overflow:auto;font-size:12px;">Menunggu data...</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Status Data</div>
+        <div class="status" id="statusText">Memuat data...</div>
+      </div>
+    </div>
+
+    <div class="map-wrap">
+      <div id="map"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+<script>
+// ⚠️ PENTING: Ganti URL di bawah ini dengan URL Deployment Web App Google Apps Script Anda
+const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbyJE3nAIenIcaocaqfzfHnOkWrRFNZn6u_mmf3LsVyFmpti0pBz1WwBLUNxYY5zOqDp/exec';
+
+let map;
+let clusterGroup;
+let allMarkers = [];
+let currentFilteredMarkers = [];
+let totalAllData = 0;
+let totalInvalidData = 0;
+
+initMap();
+loadData();
+
+function initMap() {
+  map = L.map('map', { center: [-7.02, 107.52], zoom: 11, maxZoom: 22 });
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap' });
+  const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 22, maxNativeZoom: 19, attribution: 'Tiles &copy; Esri' });
+  osm.addTo(map);
+  L.control.layers({ 'OpenStreetMap': osm, 'Satelit Esri': esri }).addTo(map);
+  clusterGroup = L.markerClusterGroup({ chunkedLoading: true, spiderfyOnMaxZoom: true, showCoverageOnHover: false });
+  map.addLayer(clusterGroup);
+}
+
+function loadData() {
+  document.getElementById('statusText').innerHTML = 'Sedang mengambil data dari spreadsheet...';
+
+  fetch(`${GAS_API_URL}?action=getDashboardData`)
+    .then(response => {
+      if (!response.ok) throw new Error('Gagal terhubung ke API');
+      return response.json();
+    })
+    .then(function(res) {
+      allMarkers = res.markers || [];
+      currentFilteredMarkers = allMarkers;
+      totalAllData = res.totalAll || allMarkers.length;
+      totalInvalidData = res.totalInvalid || 0;
+      window.totalKapasitasAll = res.totalKapasitas || 0;
+      window.totalKkAll = res.totalKkTerlayani || 0;
+
+      document.getElementById('totalKapasitas').innerText = formatNumber(window.totalKapasitasAll) + ' Ton/Hari';
+      document.getElementById('totalKkTerlayani').innerText = formatNumber(window.totalKkAll) + ' KK';
+
+      document.getElementById('kapasitasDesc').innerHTML = res.kapasitasColumn ? 'Dibaca dari kolom: <b>' + escapeHtml(res.kapasitasColumn) + '</b>' : 'Kolom kapasitas belum ditemukan.';
+      document.getElementById('kkDesc').innerHTML = res.kkColumn ? 'Dibaca dari kolom: <b>' + escapeHtml(res.kkColumn) + '</b>' : 'Kolom KK terlayani belum ditemukan.';
+
+      fillStatusFilter(res.statusOptions || []);
+      fillKecamatanFilter(res.kecOptions || []);
+      renderInvalid(res.invalidData || []);
+
+      if (res.statusColumn) {
+        document.getElementById('statusColumnInfo').innerHTML = 'Filter memakai kolom: <b>' + escapeHtml(res.statusColumn) + '</b>';
+      } else {
+        document.getElementById('statusColumnInfo').innerHTML = 'Kolom status belum ditemukan. Pastikan ada kolom Status / Status Operasional / Kondisi.';
+      }
+
+      const updated = res.updatedAt ? new Date(res.updatedAt).toLocaleString('id-ID') : '-';
+      document.getElementById('totalTps3r').innerText = allMarkers.length + ' / ' + totalAllData;
+      document.getElementById('summaryDesc').innerHTML = 'Format: <b>valid tampil / total data</b><br>Koordinat bermasalah: <b>' + totalInvalidData + '</b>';
+      document.getElementById('statusText').innerHTML = 'Data berhasil dimuat.<br>Total seluruh data: <b>' + totalAllData + '</b><br>Total titik valid: <b>' + allMarkers.length + '</b><br>Koordinat bermasalah: <b>' + totalInvalidData + '</b><br>Terakhir dimuat: ' + updated;
+
+      renderMarkers(allMarkers);
+      updateSummaryCards(allMarkers);
+    })
+    .catch(function(err) {
+      document.getElementById('statusText').innerHTML = '<div class="empty">Gagal memuat data: ' + escapeHtml(err.message) + '</div>';
+    });
+}
+
+function fillStatusFilter(options) {
+  const select = document.getElementById('statusFilter');
+  select.innerHTML = '<option value="">Semua Status</option>';
+  options.forEach(function(status) {
+    const opt = document.createElement('option');
+    opt.value = status;
+    opt.textContent = status;
+    select.appendChild(opt);
+  });
+}
+
+function fillKecamatanFilter(options) {
+  const select = document.getElementById('kecFilter');
+  select.innerHTML = '<option value="">Semua Kecamatan</option>';
+  options.forEach(function(kec) {
+    const opt = document.createElement('option');
+    opt.value = kec;
+    opt.textContent = kec;
+    select.appendChild(opt);
+  });
+}
+
+function applyFilters() {
+  const keyword = document.getElementById('searchInput').value.toLowerCase().trim();
+  const selectedStatus = document.getElementById('statusFilter').value.trim();
+  const selectedKec = document.getElementById('kecFilter').value.trim();
+
+  currentFilteredMarkers = allMarkers.filter(function(item) {
+    const matchStatus = !selectedStatus || item.status === selectedStatus;
+    const matchKec = !selectedKec || item.kecamatan === selectedKec;
+    const text = item.orderedData.map(function(d) { return (d.key || '') + ' ' + (d.value || ''); }).join(' ').toLowerCase();
+    const matchKeyword = !keyword || text.includes(keyword);
+    return matchStatus && matchKec && matchKeyword;
+  });
+
+  document.getElementById('totalTps3r').innerText = currentFilteredMarkers.length + ' / ' + totalAllData;
+  document.getElementById('summaryDesc').innerHTML = 'Data tampil mengikuti filter.<br>Koordinat bermasalah: <b>' + totalInvalidData + '</b>';
+  document.getElementById('statusText').innerHTML = 'Data ditampilkan: <b>' + currentFilteredMarkers.length + '</b><br>Dari total titik valid: <b>' + allMarkers.length + '</b><br>Total seluruh data: <b>' + totalAllData + '</b>';
+  
+  updateSummaryCards(currentFilteredMarkers);
+  renderMarkers(currentFilteredMarkers);
+}
+
+function updateSummaryCards(filteredData) {
+  let totalKapasitas = 0;
+  let totalKk = 0;
+
+  filteredData.forEach(function(item) {
+    item.orderedData.forEach(function(d) {
+      const key = String(d.key || '').toLowerCase();
+      if (key.includes('kapasitas') || key.includes('ton')) {
+        const val = parseFloat(String(d.value).replace(',', '.')) || 0;
+        totalKapasitas += val;
+      }
+      if (key.includes('kk')) {
+        const val = parseFloat(String(d.value).replace(/\./g, '')) || 0;
+        totalKk += val;
+      }
+    });
+  });
+
+  document.getElementById('totalKapasitas').innerText = formatNumber(totalKapasitas) + ' Ton/Hari';
+  document.getElementById('totalKkTerlayani').innerText = formatNumber(totalKk) + ' KK';
+}
+
+function renderMarkers(markers) {
+  clusterGroup.clearLayers();
+  if (!markers || markers.length === 0) return;
+  const bounds = [];
+  markers.forEach(function(item) {
+    const marker = L.marker([item.lat, item.lng], { title: getMarkerTitle(item.orderedData) });
+    marker.bindPopup(buildPopup(item.orderedData), { maxWidth: 540 });
+    clusterGroup.addLayer(marker);
+    bounds.push([item.lat, item.lng]);
+  });
+  if (bounds.length > 0) {
+    map.fitBounds(bounds, { padding: [30, 30] });
+  }
+}
+
+function buildPopup(orderedData) {
+  let html = '<table class="popup-table">';
+  orderedData.forEach(function(item) {
+    html += '<tr><td>' + escapeHtml(item.key) + '</td><td>' + escapeHtml(item.value || '-') + '</td></tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
+function getMarkerTitle(orderedData) {
+  const keys = ['nama tps3r', 'tps3r', 'nama', 'lokasi'];
+  for (let i = 0; i < keys.length; i++) {
+    const found = orderedData.find(function(item) {
+      const key = String(item.key || '').toLowerCase().trim();
+      return key === keys[i] || key.includes(keys[i]);
+    });
+    if (found && found.value) return found.value;
+  }
+  return orderedData.length ? orderedData[0].value : 'TPS3R';
+}
+
+function renderInvalid(data) {
+  const el = document.getElementById('invalidList');
+  if (!data || data.length === 0) {
+    el.innerHTML = 'Semua data koordinat valid 👍';
+    return;
+  }
+  let html = '<b>Jumlah bermasalah: ' + data.length + '</b><br><br>';
+  data.forEach(function(d) {
+    html += `<div class="invalid-item"><b>Baris: ${escapeHtml(d.row)}</b><br>Nama: ${escapeHtml(d.nama || '-')}<br>Koordinat: ${escapeHtml(d.koordinat || '-')}</div>`;
+  });
+  el.innerHTML = html;
+}
+
+function downloadKmzFile() {
+  document.getElementById('statusText').innerHTML = 'Sedang membuat file KMZ...';
+
+  fetch(`${GAS_API_URL}?action=downloadKmz`)
+    .then(response => {
+      if (!response.ok) throw new Error('Gagal terhubung ke API');
+      return response.json();
+    })
+    .then(function(file) {
+      const link = document.createElement('a');
+      link.href = 'data:' + file.mimeType + ';base64,' + file.base64;
+      link.download = file.filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      document.getElementById('statusText').innerHTML = 'File KMZ berhasil dibuat dan diunduh.';
+    })
+    .catch(function(err) {
+      document.getElementById('statusText').innerHTML = '<div class="empty">Gagal membuat KMZ: ' + escapeHtml(err.message) + '</div>';
+    });
+}
+
+function escapeHtml(value) {
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+function formatNumber(value) {
+  const n = Number(value || 0);
+  return n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+}
+</script>
+</body>
+</html>
