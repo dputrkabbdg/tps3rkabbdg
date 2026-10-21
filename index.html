@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+\<!DOCTYPE html>
 <html>
 <head>
   <base target="_top">
@@ -16,7 +16,6 @@
     body{ margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--bg); color:var(--text) }
     .app{ min-height:100vh; display:flex; flex-direction:column }
     
-    /* HEADER DENGAN LOGO */
     .header{ 
       background:linear-gradient(135deg,var(--main),var(--main-dark)); 
       color:white; 
@@ -75,7 +74,6 @@
     .empty{ padding:12px; background:#fff7e6; color:#6b4b00; border-radius:12px; font-size:12px; line-height:1.4 }
     .invalid-item{ margin-bottom:6px; padding:6px; background:#fff3f3; border-left:4px solid #c0392b; border-radius:6px; font-size:11px; line-height:1.4 }
     
-    /* RESPONSIVE UNTUK MOBILE */
     @media(max-width:900px){ 
       .content{grid-template-columns:1fr} 
       #map{height:70vh}
@@ -95,7 +93,7 @@
 <div class="app">
   <div class="header">
     <div class="logo-container">
-      <img src="./logo.png" alt="Logo TPS3R" class="logo">
+      <img src="https://via.placeholder.com/50x50/1F6366/ffffff?text=TPS3R" alt="Logo TPS3R" class="logo">
     </div>
     <div class="header-content">
       <h1>Dashboard Pemetaan TPS3R</h1>
@@ -176,8 +174,8 @@
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 
 <script>
-// ⚠️ PENTING: Ganti URL di bawah ini dengan URL Deployment Web App Google Apps Script Anda
-const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbyJE3nAIenIcaocaqfzfHnOkWrRFNZn6u_mmf3LsVyFmpti0pBz1WwBLUNxYY5zOqDp/exec';
+// ⚠️ PENTING: GANTI URL DI BAWAH INI DENGAN URL DEPLOYMENT APPS SCRIPT ANDA
+const GAS_API_URL = 'https://script.google.com/macros/s/AKfycbwftUwtd1ZpZQIjTepBkaGPtJKRpnJmaFzeAJ4MmmM3qOusFvc0uxRc1_16p4m788VM/exec';
 
 let map;
 let clusterGroup;
@@ -191,10 +189,23 @@ loadData();
 
 function initMap() {
   map = L.map('map', { center: [-7.02, 107.52], zoom: 11, maxZoom: 22 });
-  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 22, maxNativeZoom: 19, attribution: '&copy; OpenStreetMap' });
-  const esri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 22, maxNativeZoom: 19, attribution: 'Tiles &copy; Esri' });
-  osm.addTo(map);
-  L.control.layers({ 'OpenStreetMap': osm, 'Satelit Esri': esri }).addTo(map);
+  
+  // Gunakan CartoDB sebagai default (lebih stabil)
+  const carto = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20
+  });
+  
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+    maxZoom: 22, 
+    maxNativeZoom: 19, 
+    attribution: '&copy; OpenStreetMap' 
+  });
+  
+  carto.addTo(map);
+  L.control.layers({ 'CartoDB Voyager': carto, 'OpenStreetMap': osm }).addTo(map);
+  
   clusterGroup = L.markerClusterGroup({ chunkedLoading: true, spiderfyOnMaxZoom: true, showCoverageOnHover: false });
   map.addLayer(clusterGroup);
 }
@@ -202,9 +213,19 @@ function initMap() {
 function loadData() {
   document.getElementById('statusText').innerHTML = 'Sedang mengambil data dari spreadsheet...';
 
-  fetch(`${GAS_API_URL}?action=getDashboardData`)
+  // Tambahkan timestamp untuk menghindari cache
+  const timestamp = new Date().getTime();
+  const apiUrl = `${GAS_API_URL}?action=getDashboardData&t=${timestamp}`;
+
+  fetch(apiUrl, {
+    method: 'GET',
+    mode: 'cors',
+    cache: 'no-cache'
+  })
     .then(response => {
-      if (!response.ok) throw new Error('Gagal terhubung ke API');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       return response.json();
     })
     .then(function(res) {
@@ -240,6 +261,7 @@ function loadData() {
       updateSummaryCards(allMarkers);
     })
     .catch(function(err) {
+      console.error('Error loading data:', err);
       document.getElementById('statusText').innerHTML = '<div class="empty">Gagal memuat data: ' + escapeHtml(err.message) + '</div>';
     });
 }
@@ -361,7 +383,14 @@ function renderInvalid(data) {
 function downloadKmzFile() {
   document.getElementById('statusText').innerHTML = 'Sedang membuat file KMZ...';
 
-  fetch(`${GAS_API_URL}?action=downloadKmz`)
+  const timestamp = new Date().getTime();
+  const apiUrl = `${GAS_API_URL}?action=downloadKmz&t=${timestamp}`;
+
+  fetch(apiUrl, {
+    method: 'GET',
+    mode: 'cors',
+    cache: 'no-cache'
+  })
     .then(response => {
       if (!response.ok) throw new Error('Gagal terhubung ke API');
       return response.json();
@@ -376,6 +405,7 @@ function downloadKmzFile() {
       document.getElementById('statusText').innerHTML = 'File KMZ berhasil dibuat dan diunduh.';
     })
     .catch(function(err) {
+      console.error('Error downloading KMZ:', err);
       document.getElementById('statusText').innerHTML = '<div class="empty">Gagal membuat KMZ: ' + escapeHtml(err.message) + '</div>';
     });
 }
